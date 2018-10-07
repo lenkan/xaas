@@ -1,18 +1,17 @@
-FROM gradle as builder
+FROM openjdk:latest as builder
 WORKDIR /xaas
 
-USER root
-RUN chown -R gradle /xaas
-USER gradle
+# Install gradle wrapper and lock dependencies
+COPY build.gradle gradlew ./
+COPY gradle ./gradle
+RUN ./gradlew dependencies
 
-# TODO: Should be able to resolve dependencies here
-COPY build.gradle .
-RUN gradle tasks
-
+# Copy source and build
 COPY src ./src
-RUN gradle build installDist
+RUN ./gradlew build installDist
 
 FROM openjdk:latest
+RUN pwd
 WORKDIR /xaas
 COPY --from=builder /xaas/build /xaas/build
 
