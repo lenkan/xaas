@@ -162,7 +162,7 @@ fun main(args: Array<String>) {
     factory.virtualHost = virtualHost
     val connection = factory.newConnection()
     val channel = connection.createChannel()
-    println("Connected to $hostname:$port$virtualHost as use '$username'")
+    println("Connected to $hostname:$port$virtualHost as user '$username'")
     println()
 
 
