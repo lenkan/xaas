@@ -11,7 +11,6 @@ COPY src ./src
 RUN ./gradlew build installDist
 
 FROM openjdk:latest
-RUN pwd
 WORKDIR /xaas
 COPY --from=builder /xaas/build /xaas/build
 
