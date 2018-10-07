@@ -1,14 +1,13 @@
-FROM openjdk:latest
+FROM openjdk:latest as builder
 
-RUN apt-get update
-RUN curl -sL https://deb.nodesource.com/setup_8.x | bash -
-RUN apt-get install -y nodejs
+WORKDIR /xaas
 
-WORKDIR /app
-
-COPY package.json package-lock.json ./
-RUN npm run setup && npm install --production
-
+# A little naive, should split into steps to use cache
 COPY . .
+RUN ./gradlew clean build
 
-CMD ["npm", "start"]
+RUN mkdir /xaas/xslt
+ENV XSLT_ROOT=/xaas/xslt
+
+# Probably not correct? Should run some output
+CMD ["./gradlew", "run"]
