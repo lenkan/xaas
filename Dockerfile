@@ -6,6 +6,8 @@ WORKDIR /xaas
 COPY . .
 RUN ./gradlew clean build
 
+RUN mkdir /xaas/xslt
+ENV XSLT_ROOT=/xaas/xslt
 
 # Probably not correct? Should run some output
 CMD ["./gradlew", "run"]
