@@ -5,6 +5,7 @@ import net.sf.saxon.s9api.Processor
 import net.sf.saxon.s9api.XsltExecutable
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.lang.Exception
 import javax.xml.transform.stream.StreamSource
 
 private val processor: Processor = Processor(false)
@@ -32,9 +33,12 @@ fun sheetId(path: String): String {
             .replace(Regex("^/"), "")
 }
 
+interface Transform {
+    fun exec(body: ByteArray): ByteArray
+}
 
-class Transform(private val executable: XsltExecutable) {
-    fun exec(body: ByteArray): ByteArray {
+class CompiledTransform(private val executable: XsltExecutable) : Transform {
+    override fun exec(body: ByteArray): ByteArray {
         val transformer = executable.load()
         val outputStream = ByteArrayOutputStream()
 
@@ -54,15 +58,18 @@ class Transforms {
             file.extension == "xsl"
         }.map { file ->
             val key = sheetId(file.path)
-            println("Compiling $key")
             val source = StreamSource(file.bufferedReader())
             val executable = compiler.compile(source)
-            key to Transform(executable)
+            println("Compiled $key")
+            key to CompiledTransform(executable)
         }.toMap()
+        val total = transforms.size
+        println("Compiled $total stylesheets")
+        println("")
     }
 
     fun get(id: String): Transform? {
-        return transforms.getValue(id)
+        return transforms.getOrDefault(id, null)
     }
 }
 
@@ -99,6 +106,24 @@ class Reply(private val channel: Channel, private val replyTo: String, private v
                 body
         )
     }
+
+
+    fun error(e: Exception) {
+        val outProperties = AMQP.BasicProperties.Builder()
+                .contentType("text/plain")
+                .contentEncoding("utf8")
+                .correlationId(correlationId)
+                .headers(mapOf("status" to 500))
+                .build()
+
+        val body = e.message ?: "Unexpected error on server"
+        channel.basicPublish(
+                "",
+                replyTo,
+                outProperties,
+                body.toByteArray()
+        )
+    }
 }
 
 class TransformConsumer(channel: Channel, private val transforms: Transforms) : DefaultConsumer(channel) {
@@ -108,17 +133,19 @@ class TransformConsumer(channel: Channel, private val transforms: Transforms) : 
             println("Received request without data or properties, so cannot reply")
             return
         }
-
         val reply = Reply(channel, properties.replyTo, properties.correlationId)
+        try {
+            if (!properties.headers.containsKey("id")) {
+                return reply.badRequest("Received request without id", 400)
+            }
 
-        if (!properties.headers.containsKey("id")) {
-            return reply.badRequest("Received request without id", 400)
+            val id = properties.headers.getValue("id").toString()
+            val transform = transforms.get(id) ?: return reply.badRequest("No such transform '$id'", 404)
+            val result = transform.exec(body)
+            return reply.ok(result)
+        } catch (e: Exception) {
+            return reply.error(e)
         }
-
-        val id = properties.headers.getValue("id").toString()
-        val transform = transforms.get(id) ?: return reply.badRequest("No such transform '$id'", 404)
-        val result = transform.exec(body)
-        return reply.ok(result)
     }
 }
 
@@ -135,7 +162,7 @@ fun main(args: Array<String>) {
     factory.virtualHost = virtualHost
     val connection = factory.newConnection()
     val channel = connection.createChannel()
-    println("Connected to $hostname$port$virtualHost as $username")
+    println("Connected to $hostname:$port$virtualHost as use '$username'")
     println()
 
 
